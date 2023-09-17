@@ -3,6 +3,7 @@ Module containing base parser class to parse keymaps into KeymapData and then du
 Do not use directly, use QmkJsonParser or ZmkKeymapParser instead.
 """
 
+import re
 from abc import ABC
 from io import TextIOWrapper
 from typing import Sequence
@@ -13,6 +14,8 @@ from keymap_drawer.keymap import KeymapData, LayoutKey
 
 class KeymapParser(ABC):  # pylint: disable=too-many-instance-attributes
     """Abstract base class for parsing firmware keymap representations."""
+
+    _modifier_fn_to_std: dict[str, list[str]]
 
     def __init__(
         self,
@@ -29,6 +32,35 @@ class KeymapParser(ABC):  # pylint: disable=too-many-instance-attributes
         self.conditional_layers: dict[int, list[int]] = {}  # then-layer to if-layers mapping
         self.trans_key = LayoutKey.from_key_spec(self.cfg.trans_legend)
         self.raw_binding_map = self.cfg.raw_binding_map.copy()
+        self.modifier_fn_re = re.compile(
+            "(" + "|".join(re.escape(mod) for mod in self._modifier_fn_to_std) + r") *\( *(.*) *\)"
+        )
+
+    def strip_modifier_fns(self, keycode: str) -> tuple[str, str]:
+        """
+        Strip potential modifier functions from the keycode then return a tuple of the keycode and the modifiers
+        formatted according to parse_config.modifier_fn_map.
+        """
+        if self.cfg.modifier_fn_map is None:
+            return keycode, ""
+        fn_map = self.cfg.modifier_fn_map.dict()
+
+        def strip_modifiers(keycode: str, current_mods: list[str] | None = None) -> tuple[str, list[str]]:
+            if current_mods is None:
+                current_mods = []
+            if not (m := self.modifier_fn_re.fullmatch(keycode)):
+                return keycode, current_mods
+            return strip_modifiers(m.group(2), current_mods + self._modifier_fn_to_std[m.group(1)])
+
+        keycode, mods = strip_modifiers(keycode)
+        if not mods:
+            return keycode, ""
+
+        return (
+            keycode,
+            fn_map.get("internal_joiner", "").join(fn_map.get(mod, "") for mod in mods)
+            + fn_map.get("keycode_joiner", ""),
+        )
 
     def update_layer_activated_from(
         self, from_layers: Sequence[int], to_layer: int, key_positions: Sequence[int]

@@ -44,6 +44,15 @@ class LayoutKey(BaseModel, allow_population_by_field_name=True):
             return dict_repr
         return dict_repr.get("t") or dict_repr.get("tap", "")
 
+    def add_prefix(self, prefix: str) -> None:
+        """Add a prefix string to all non-empty fields."""
+        if self.tap:
+            self.tap = prefix + self.tap
+        if self.hold:
+            self.hold = prefix + self.hold
+        if self.shifted:
+            self.shifted = prefix + self.shifted
+
 
 class ComboSpec(BaseModel, allow_population_by_field_name=True):
     """
